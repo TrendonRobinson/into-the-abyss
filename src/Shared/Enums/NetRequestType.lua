@@ -37,5 +37,5 @@ return {
     LootableUnlocked = 11;
 
     EntityHurt = 12;
-    MeleeHitRequest = 13;
+    CombatRequest = 13;
 }

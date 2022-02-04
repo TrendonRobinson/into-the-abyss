@@ -24,4 +24,10 @@ return {
 	Ingredient = 13;
 
     Modifier = 14;
+
+    CombatMelee = 15;
+    CombatRanged = 16;
+    CombatArcane = 17;
+    CombatSkill = 18;
+    
 }
