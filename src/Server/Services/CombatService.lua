@@ -10,10 +10,8 @@
 
 
 local CombatService = {}
-local Network, AssetService, EntityService
-local MeleeModule, ArcheryModule, ArcaneModule, SkillModule
+local Network
 
-local CombatRequestType
 local RequestHandlers
 
 
@@ -21,7 +19,7 @@ local function CombatRequestHandler(user, dt, requestType, ...)
     local handler = RequestHandlers:Get(requestType)
 
     if (handler) then
-        return handler(CombatService, user, dt, ...)
+        return handler(user, dt, ...)
     end
 
     CombatService:Warn("Invalid combat request type: ", requestType, ...)
@@ -30,31 +28,16 @@ local function CombatRequestHandler(user, dt, requestType, ...)
 end
 
 
-function CombatService:MeleeAttack(user, dt, meleeID)
-    local meleeAsset = AssetService:GetAsset(meleeID)
-    return MeleeModule:TryAttack(EntityService:GetEntity(user), dt, meleeAsset)
-end
-
-
-function CombatService:MeleeProcess(user, dt, victims)
-    return MeleeModule:TryProcess(
-        EntityService:GetEntity(user), dt,
-        EntityService:GetEntities(victims))
-end
-
-
 function CombatService:EngineInit()
     Network = self.Services.Network
-    AssetService = self.Services.AssetService
-    EntityService = self.Services.EntityService
-
-    CombatRequestType = self.Enums.CombatRequestType
 
     RequestHandlers = self.Classes.IndexedMap.new()
 
     -- Map requests to handlers
-    RequestHandlers:Add(CombatRequestType.MeleeRequest, self.MeleeAttack)
-    RequestHandlers:Add(CombatRequestType.MeleeHitRequest, self.MeleeProcess)
+    self.Modules.CombatArcaneModule:Setup(RequestHandlers)
+    self.Modules.CombatMeleeModule:Setup(RequestHandlers)
+    self.Modules.CombatRangedModule:Setup(RequestHandlers)
+    self.Modules.CombatSkillModule:Setup(RequestHandlers)
 end
 
 
