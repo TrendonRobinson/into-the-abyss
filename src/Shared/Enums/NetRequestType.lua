@@ -38,4 +38,5 @@ return {
 
     EntityHurt = 12;
     CombatRequest = 13;
+    CombatReplicate = 14;
 }
