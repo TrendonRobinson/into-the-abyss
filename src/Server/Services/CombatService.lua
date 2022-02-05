@@ -35,8 +35,8 @@ function CombatService:EngineInit()
 
     -- Map requests to handlers
     self.Modules.CombatArcaneModule:Setup(RequestHandlers)
+    self.Modules.CombatArcheryModule:Setup(RequestHandlers)
     self.Modules.CombatMeleeModule:Setup(RequestHandlers)
-    self.Modules.CombatRangedModule:Setup(RequestHandlers)
     self.Modules.CombatSkillModule:Setup(RequestHandlers)
 end
 
