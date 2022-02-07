@@ -22,7 +22,7 @@ local OutstandingKeys
 -- @returns <string> damage request key
 function MeleeModule.TryAttack(user, dt, meleeID, subID)
     local meleeAsset = AssetService:GetAsset(meleeID)
-    local attacker = EntityService:GetEntity(user)
+    local attacker = EntityService:GetEntity(user.Character)
 
     if (MeleeModule.CanAttack(attacker, meleeAsset, subID)) then
         local key = MeleeModule.GenerateKey(user)
