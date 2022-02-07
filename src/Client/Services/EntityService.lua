@@ -183,7 +183,7 @@ function EntityService:GetEntity(base, downloadTimeout)
             waited:Wait()
             waiter:Disconnect()
         end
-        
+
         entity = AllEntities:Get(base)
     end
 
