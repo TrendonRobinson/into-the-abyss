@@ -214,7 +214,7 @@ end
 -- Stops a previously playing action referred to by ID
 -- @param actionID <string>
 -- @param fade <number>
-function Animator:StopAction(actionID, fade) 
+function Animator:StopAction(actionID, fade)
 	local action = self._CurrentActions:Get(actionID)
 
 	if (not action) then
@@ -228,9 +228,10 @@ end
 
 -- Retrieves a playing track via actionID
 -- @param actionID <string>
--- @return <AnimationTrack>
+-- @return <AnimationTrack?>
 function Animator:GetActionTrack(actionID)
-	return self._CurrentActions:Get(actionID).Track
+    local action = self._CurrentActions:Get(actionID)
+	return action and action.Track or nil
 end
 
 
