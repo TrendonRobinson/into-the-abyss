@@ -25,6 +25,19 @@ function EntityPC.new(base, initParams)
 	end
 
 	local self = setmetatable(EntityNoid.new(base, initParams), EntityPC)
+    local StateMachine = self.StateMachine
+    local States = StateMachine.States
+
+    StateMachine:AddState("MeleeAttack")
+    StateMachine:AddTransition("MeleeStart1", States.Idle, States.MeleeAttack, nil, function()
+        self:UpdateMovement()
+    end)
+    StateMachine:AddTransition("MeleeStart2", States.Moving, States.MeleeAttack, nil, function()
+        self:UpdateMovement()
+    end)
+    StateMachine:AddTransition("MeleeStop", States.MeleeAttack, States.Idle, nil, function()
+        self:UpdateMovement()
+    end)
 
 	self.Player = Players:GetPlayerFromCharacter(base)
 	self.FaceAsset = AssetService:GetAsset(initParams._FaceID or "060")

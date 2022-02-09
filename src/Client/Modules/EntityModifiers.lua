@@ -25,6 +25,11 @@ function EntityModifiers:Unmanage(base)
 end
 
 
+function EntityModifiers:IsManaging(base)
+    return ManagedBases:Get(base) ~= nil
+end
+
+
 function EntityModifiers:AddModifier(base, mType, mUID, ...)
 end
 
@@ -51,7 +56,9 @@ end
 
 
 function EntityModifiers:EngineStart()
-	
+	EntityService.EntityCreated:Connect(function(base)
+        self:Manage(base)
+    end)
 end
 
 

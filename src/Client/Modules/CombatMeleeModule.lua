@@ -21,7 +21,7 @@ local DEFAULT_MOVESETS = {
     [CONFIGURATION.TWO_HANDED_SWORD] = "111";
 }
 
-local State, OwnEntity
+local State, OwnEntity, InputsUnbound
 
 
 -- TODO: Check if primary weapon asset has special moveset
@@ -84,7 +84,8 @@ function MeleeModule.TryAttack()
     local finished = Signal.new() -- True: successful attack, False: interupted
     local interupted = false
     local interupter = ListenerList.new(
-        OwnEntity.OnDestroyed
+        OwnEntity.OnDestroyed,
+        InputsUnbound
         -- OwnEntity.Died,
         -- etc
     ):Connect(function()
@@ -103,6 +104,8 @@ function MeleeModule.TryAttack()
         State.Accessor:Unlock()
         return
     end
+
+    OwnEntity.StateMachine:Transition("MeleeStart1")
 
     -- Default to 0
     local move = moveset.Moves["0"]
@@ -168,7 +171,8 @@ function MeleeModule.TryAttack()
     if (interupted and animator.StopAction ~= nil) then 
         animator:StopAction(actionID, 0.0)
     end
-
+    
+    OwnEntity.StateMachine:Transition("MeleeStop")
     State.Accessor:Unlock()
 end
 
@@ -240,6 +244,7 @@ function MeleeModule:UnbindInputs(inputManager)
         inputManager:UnbindAction(actionName)
     end
     MeleeModule.StopAuto()
+    InputsUnbound:Fire()
     OwnEntity = nil
 end
 
@@ -260,6 +265,10 @@ function MeleeModule:Setup()
     Signal = self.Classes.Signal
     Mutex = self.Classes.Mutex
     ListenerList = self.Classes.ListenerList
+
+    -- Fires whenever we unbind inputs for whatever reason.
+    -- Including a state change that invalidates combat
+    InputsUnbound = Signal.new()
 
     -- Current attacking state and record of the
     --  previous attack used to choose next attack

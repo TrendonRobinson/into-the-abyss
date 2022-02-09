@@ -118,9 +118,10 @@ function EntityNoid:UpdateMovement()
     local states = self.StateMachine.States
     local state = self.StateMachine.CurrentState
 
-    if (state == states.Staggering) then
+    if (state == states.Staggering or state == states.MeleeAttack) then
         self.Base.Humanoid.WalkSpeed = 0
         self.Base.Humanoid.JumpPower = 0
+        print("stahp")
     else
         self.Base.Humanoid.WalkSpeed = EntityModifiers:CalculateTarget(self.Base, "Walkspeed")
         self.Base.Humanoid.JumpPower = EntityModifiers:CalculateTarget(self.Base, "JumpPower")
