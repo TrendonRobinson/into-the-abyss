@@ -13,7 +13,7 @@ local RENDER_DISTANCE = 100
 
 local EntityService = { Priority = 700 }
 local Network, MetronomeService
-local ThreadUtil
+local ThreadUtil, EntityModifiers
 
 local Camera
 local RenderOrigin
@@ -305,6 +305,7 @@ function EntityService:EngineInit()
     MetronomeService = self.Services.MetronomeService
 
     ThreadUtil = self.Modules.ThreadUtil
+    EntityModifiers = self.Modules.EntityModifiers
 
     Camera = workspace.CurrentCamera
     RenderOrigin = {
@@ -325,11 +326,14 @@ function EntityService:EngineInit()
     self.EntityCreated = self.Classes.Signal.new()
     self.EntityDestroyed = self.Classes.Signal.new()
 
+    EntityModifiers:Init()
+
     self.Enabled = false
 end
 
 
 function EntityService:EngineStart()
+    EntityModifiers:StartManager()
     self:Enable(true)
 
     wait(5)

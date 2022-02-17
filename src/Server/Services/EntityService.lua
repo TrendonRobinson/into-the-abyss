@@ -144,6 +144,50 @@ function EntityService:NotifyEquipmentChange(base, equipSlot, itemData)
 end
 
 
+-- Attempts to create a modifier and attach it to an entity
+-- IFF new modifier would overwrite, refresh the timer of existing modifier
+-- @param base <Model> base of the EntityNoid
+-- @param baseID <string> modifier asset baseid
+-- @param modifierArgs <dictionary> arguments specific to the modifier
+-- @param name <string> of the modifier (display purposes)
+-- @returns <string> mUID
+function EntityService:AddModifier(base, baseID, modifierArgs, name)
+    local mUID = EntityModifiers:AddModifier(base, baseID, modifierArgs, name)
+
+    -- Let everyone know
+    Network:FireAllClients(
+        Network:Pack(
+            Network.NetProtocol.Forget,
+            Network.NetRequestType.ReplicateModifierAdd,
+            base,
+            baseID,
+            modifierArgs,
+            name
+        )
+    )
+
+    return mUID
+end
+
+
+-- Indexes a modifier by UID and attempts to remove it
+-- @param base <Model> base of the EntityNoid
+-- @param mUID <string> UID of the modifier
+function EntityService:RemoveModifier(base, mUID)
+    EntityModifiers:RemoveModifier(base, mUID)
+
+    -- Let everyone know
+    Network:FireAllClients(
+        Network:Pack(
+            Network.NetProtocol.Forget,
+            Network.NetRequestType.ReplicateModifierRemove,
+            base,
+            mUID
+        )
+    )
+end
+
+
 -- Removes an entity and its physical base
 -- @param base <Model>
 function EntityService:DestroyEntity(base)
