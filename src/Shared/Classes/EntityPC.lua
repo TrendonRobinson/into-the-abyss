@@ -148,7 +148,6 @@ function EntityPC:DrawEquipmentSlot(equipSlot) print(self.Equipment)
             local attachmentBase = self.Skin:FindFirstChild(ChooseAttachmentBase(submodel.Name, equipSlot))
 
             submodel:PivotTo(attachmentBase.CFrame)
-            submodel.PrimaryPart:Destroy()
 
             for _, descendant in ipairs(submodel:GetDescendants()) do
                 if (not descendant:IsA("BasePart")) then continue end
