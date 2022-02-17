@@ -2,8 +2,8 @@ local MeleeModule = {}
 local AssetService, Network, AnimationService, MetronomeService
 
 local ThreadUtil
-local CombatRequestType, WeaponClass
-local Signal, Mutex, ListenerList
+local CombatRequestType, WeaponClass, MoveWeapons, EquipSlot
+local Signal, Mutex, ListenerList, RaycastHitboxV4, Maid
 
 -- Exists purely for cleanly binding/unbinding actions from inputservice
 local ACTIONS = {
@@ -58,6 +58,39 @@ function MeleeModule.GetWeaponConfiguration(primary, secondary)
     end
 
     return nil
+end
+
+
+-- Creates a hitbox or hitboxes depending on which weapon(s) is/are
+--  related to the move asset
+-- @param move <Asset>
+-- @return <arraylike<Hitbox>>
+function MeleeModule.MakeHitboxes(move)
+    local hitboxes = {}
+    local params = RaycastParams.new()
+
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.FilterDescendantsInstances = {OwnEntity.Base}
+
+    if (move.Weapons == MoveWeapons.PRIMARY or move.Weapons == MoveWeapons.BOTH) then
+        table.insert(
+            hitboxes,
+            RaycastHitboxV4.new(
+                OwnEntity.EquipmentModels[EquipSlot.Primary]
+            ):SetRayParams(params)
+        )
+    end
+
+    if (move.Weapons == MoveWeapons.SECONDARY or move.Weapons == MoveWeapons.BOTH) then
+        table.insert(
+            hitboxes,
+            RaycastHitboxV4.new(
+                OwnEntity.EquipmentModels[EquipSlot.Secondary]
+            ):SetRayParams(params)
+        )
+    end
+
+    return hitboxes
 end
 
 
@@ -144,10 +177,28 @@ function MeleeModule.TryAttack()
         end
     end)
 
-    -- Get the animation and hit scanner going for the weapon(s) that are being swung (1 / 2 / 1,2)
+    -- Get the animation and hit scanner going
     local actionID = animator:PlayAction(move.Name, 0.3) -- Blocking call
-    local scannerJobID = MetronomeService:BindToFrequency(30, MeleeModule.HitScanJob(weapons, move.Weapons))
+    local actionTrack = animator:GetActionTrack(actionID)
+    local hitboxes = MeleeModule.MakeHitboxes(move)
+    local markerMaid = Maid.new()
 
+    for _, hitbox in ipairs(hitboxes) do
+        markerMaid:GiveTask(hitbox.OnHit:Connect(function(part, humanoid, rayResults, group)
+            print(part, humanoid, rayResults, group)
+        end))
+    end
+    markerMaid:GiveTask(actionTrack:GetMarkerReachedSignal("BeginSwing"):Connect(function() 
+        for _, hitbox in ipairs(hitboxes) do
+            hitbox:HitStart()
+        end
+    end))
+    markerMaid:GiveTask(actionTrack:GetMarkerReachedSignal("EndSwing"):Connect(function() 
+        for _, hitbox in ipairs(hitboxes) do
+            hitbox:HitStop()
+        end
+    end))
+    
     -- Delay until the end of the swing section
     -- IFF we reach it uninterupted, cleanup and release lock
     ThreadUtil.IntDelay(
@@ -164,7 +215,11 @@ function MeleeModule.TryAttack()
     State.LastAttack.Interupted = interupted or not finished:Wait() -- This *should* short circuit
 
     interupter:Disconnect()
-    MetronomeService:Unbind(scannerJobID)
+    markerMaid:Destroy()
+
+    for _, hitbox in ipairs(hitboxes) do
+        hitbox:HitStop()
+    end
 
     -- We can only call StopAction if the entity had not despawned
     -- e.g. the animator had not cleaned itself up yet
@@ -261,10 +316,14 @@ function MeleeModule:Setup()
 
     CombatRequestType = self.Enums.CombatRequestType
     WeaponClass = self.Enums.WeaponClass
+    MoveWeapons = self.Enums.MoveWeapons
+    EquipSlot = self.Enums.EquipSlot
 
     Signal = self.Classes.Signal
     Mutex = self.Classes.Mutex
     ListenerList = self.Classes.ListenerList
+    RaycastHitboxV4 = self.Classes.RaycastHitboxV4
+    Maid = self.Classes.Maid
 
     -- Fires whenever we unbind inputs for whatever reason.
     -- Including a state change that invalidates combat
