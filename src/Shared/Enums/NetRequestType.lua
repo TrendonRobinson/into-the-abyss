@@ -39,4 +39,7 @@ return {
     EntityHurt = 12;
     CombatRequest = 13;
     CombatReplicate = 14;
+
+    ReplicateModifierAdd = 15;
+    ReplicateModifierRemove = 16;
 }
