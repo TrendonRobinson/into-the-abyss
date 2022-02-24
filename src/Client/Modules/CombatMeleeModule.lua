@@ -21,7 +21,7 @@ local DEFAULT_MOVESETS = {
     [CONFIGURATION.TWO_HANDED_SWORD] = "111";
 }
 
-local State, OwnEntity, InputsUnbound
+local State, OwnEntity, InputMaid, InputsUnbound
 
 
 -- TODO: Check if primary weapon asset has special moveset
@@ -63,16 +63,16 @@ end
 
 -- Creates a hitbox or hitboxes depending on which weapon(s) is/are
 --  related to the move asset
--- @param move <Asset>
+-- @param moveset <Asset>
 -- @return <arraylike<Hitbox>>
-function MeleeModule.MakeHitboxes(move)
+function MeleeModule.MakeHitboxes(moveset)
     local hitboxes = {}
     local params = RaycastParams.new()
 
     params.FilterType = Enum.RaycastFilterType.Blacklist
     params.FilterDescendantsInstances = {OwnEntity.Base}
 
-    if (move.Weapons == MoveWeapons.PRIMARY or move.Weapons == MoveWeapons.BOTH) then
+    if (moveset.Weapons == MoveWeapons.PRIMARY or moveset.Weapons == MoveWeapons.BOTH) then
         table.insert(
             hitboxes,
             RaycastHitboxV4.new(
@@ -81,7 +81,7 @@ function MeleeModule.MakeHitboxes(move)
         )
     end
 
-    if (move.Weapons == MoveWeapons.SECONDARY or move.Weapons == MoveWeapons.BOTH) then
+    if (moveset.Weapons == MoveWeapons.SECONDARY or moveset.Weapons == MoveWeapons.BOTH) then
         table.insert(
             hitboxes,
             RaycastHitboxV4.new(
@@ -108,6 +108,8 @@ function MeleeModule.TryAttack()
     if (not State.Accessor:TryLock()) then return end
 
     -- Primary/secondary weapon slots
+    -- Could techincally make config and moveset global,
+    --  but that would make things harder to read
     local weapons = {unpack(OwnEntity.Equipment, 4, 5)}
     local configuration = MeleeModule.GetWeaponConfiguration(weapons[1], weapons[2])
 
@@ -130,6 +132,7 @@ function MeleeModule.TryAttack()
     local movesetBaseID = MeleeModule.GetMovesetBaseID(configuration) -- Blocking call
     local moveset = AssetService:GetAsset(movesetBaseID) -- Blocking call
     local animator = AnimationService:GetAnimator(OwnEntity) -- Blocking call
+    local now = tick()
 
     -- If interupted during the blocking calls, abort
     if (interupted) then 
@@ -138,26 +141,20 @@ function MeleeModule.TryAttack()
         return
     end
 
+    -- Entity state
     OwnEntity.StateMachine:Transition("MeleeStart1")
 
-    -- Default to 0
-    local move = moveset.Moves["0"]
-    local now = tick()
-
-    -- If previous attack was interupted, restart the chain at 0 (leave as default)
-    -- Let "EndsAt" be a conceptual variable representing the context
-    --  that of which begins the window where the next attack in a chain
-    --  may begin. "StopsAt" represents when said window closes.
-    -- We may only reach this section IFF now >= EndsAt since the
-    --  previous thread would have unlocked the mutex @ EndsAt.
-    -- Therefore, this condition implies: now <= StopsAt AND now >= EndsAt
-    if (not State.LastAttack.Interupted and now <= State.LastAttack.StopsAt) then
-        -- Moves are indexed by string inside the asset
-        move = moveset.Moves[tostring((State.LastAttack.SID + 1) % moveset.Moves.Count)]
-    else
-        -- This move is 0, setting to 1 for next attack
-        State.LastAttack.SID = 1
+    -- Last window interupted/expired or last attach reached end of chain
+    if (State.Machine.CurrentState ~= -1 and (State.LastAttack.Interupted or now > State.LastAttack.StopsAt)
+        or State.Machine.CurrentState == moveset.Moves.Count - 1) then
+        State.Machine:Transition("Any-1")
     end
+
+    -- Stateswitch to attack-to-be
+    State.Machine:Transition(State.Machine.CurrentState .. State.Machine.CurrentState + 1)
+
+    -- Grab move and prep next attack
+    local move = moveset.Moves[tostring(State.Machine.CurrentState)] -- Moves are indexed by string inside the asset
 
     -- Ask for permission as well as signal that we are attacking
     -- If granted, a key will be returned, and our attack replicated
@@ -165,12 +162,13 @@ function MeleeModule.TryAttack()
         Network.NetRequestType.CombatRequest,
         CombatRequestType.MeleeRequest,
         movesetBaseID,
-        move.Name
+        move.AnimationName
     ):Connect(function(inKey)
         if (not inKey) then
             -- Permission denied, abort
             interupted = true
             finished:Fire(false)
+            -- TODO: Reset statemachine
         else
             -- Permission granted and key received, start requesting hits
             State.PermissionKey = inKey
@@ -178,9 +176,9 @@ function MeleeModule.TryAttack()
     end)
 
     -- Get the animation and hit scanner going
-    local actionID = animator:PlayAction(move.Name, 0.3) -- Blocking call
+    local actionID = animator:PlayAction(move.AnimationName, 0.3) -- Blocking call
     local actionTrack = animator:GetActionTrack(actionID)
-    local hitboxes = MeleeModule.MakeHitboxes(move)
+    local hitboxes = MeleeModule.MakeHitboxes(moveset)
     local markerMaid = Maid.new()
 
     for _, hitbox in ipairs(hitboxes) do
@@ -200,16 +198,18 @@ function MeleeModule.TryAttack()
     end))
     
     -- Delay until the end of the swing section
-    -- IFF we reach it uninterupted, cleanup and release lock
+    -- IFF we reach it uninterupted, prepare for next
+    --  potential attack, cleanup and release lock
     ThreadUtil.IntDelay(
         move.SwingEnd,
-        function() finished:Fire(true) end,
-        interupter)
+        function()
+            finished:Fire(true)
+        end,
+        finished)
 
     -- Update "Last attack" info since this attack is now the most recent
     State.LastAttack.StartedAt = now
     State.LastAttack.StopsAt = now + move.SwingStop
-    State.LastAttack.SID = (State.LastAttack.SID + 1) % moveset.Moves.Count
 
     -- Log state and cleanup
     State.LastAttack.Interupted = interupted or not finished:Wait() -- This *should* short circuit
@@ -239,16 +239,6 @@ function MeleeModule.RegisterHit(victimBase, key)
 end
 
 
--- Factory that creates the job that will do hit registration
--- Used to scan for hits between two positions of our sword in time
--- @param weapons <table> holding both weapons, if applicable
--- @param weaponsToUse <string> of values "1" "2" or "1,2" representing which weapon(s) to use
-function MeleeModule.HitScanJob(weapons, weaponsToUse)
-    return function(dt)
-    end
-end
-
-
 -- Receives melee replication event and plays it locally
 -- @param dt1 <number> time it took to receive
 -- @param dt2 <number> time it took for attacker's request to reach server
@@ -257,19 +247,47 @@ function MeleeModule.ReplicateHandler(dt1, dt2, ...)
 end
 
 
+-- Starts/stops auto attacking
 function MeleeModule.StartAuto()
     if (State.Auto) then return end
     State.Auto = true
     State.AutoJobID = MetronomeService:BindToFrequency(2, MeleeModule.TryAttack)
     MeleeModule.TryAttack()
 end
-
-
 function MeleeModule.StopAuto()
     if (not State.Auto) then return end
     State.Auto = false
     MetronomeService:Unbind(State.AutoJobID)
     State.AutoJobID = nil
+end
+
+
+-- Create a statemachine allowing consecutive attacks up to
+--  however many the user has unlocked for his/her weapon config
+--  with an upper bound of however many the moveset has
+--  as well as a path for resetting to 0
+function MeleeModule.SetupStateMachine(entity)
+    State.Accessor:Lock()
+
+    local configuration = MeleeModule.GetWeaponConfiguration(entity.Equipment[4], entity.Equipment[5])
+
+    -- No need to make one if we have no valid weapon config
+    if (configuration ~= nil) then
+        local movesetBaseID = MeleeModule.GetMovesetBaseID(configuration) -- Blocking call
+        local moveset = AssetService:GetAsset(movesetBaseID) -- Blocking call
+        local machine = MeleeModule.Classes.StateMachine.new(-1) -- -1: no prior attack, reset, or expired
+
+        machine:AddTransition("Any-1", "Any", -1)
+
+        for i = 0, moveset.Moves.Count do
+            machine:AddState(i)
+            machine:AddTransition(i - 1 .. i, i - 1, i, nil) -- TODO: Add qualifiers/handlers
+        end
+
+        State.Machine = machine
+    end
+
+    State.Accessor:Unlock()
 end
 
 
@@ -279,6 +297,21 @@ end
 -- @param inputManager <Service>
 function MeleeModule:BindInputs(inputMode, ownEntity, inputManager)
     OwnEntity = ownEntity
+
+    -- Has blocking call
+    MeleeModule.SetupStateMachine(ownEntity)
+
+    -- Abort, unlock
+    if (OwnEntity == nil) then return end
+
+    -- Async bind, has blocking call
+    InputMaid:GiveTask(ownEntity.EquipmentChanged:Connect(function(equipSlot, _, _)
+        if (equipSlot == EquipSlot.Primary or equipSlot == EquipSlot.Secondary) then
+            if (State.Machine) then State.Machine:Destroy() end
+            MeleeModule.SetupStateMachine(ownEntity)
+        end
+    end))
+
     inputManager:BindAction(
         Enum.UserInputType.MouseButton1,
         ACTIONS.START_AUTO_ATTACK_MELEE,
@@ -298,9 +331,14 @@ function MeleeModule:UnbindInputs(inputManager)
     for _, actionName in pairs(ACTIONS) do
         inputManager:UnbindAction(actionName)
     end
+
+    if (State.Machine) then State.Machine:Destroy() end
+
+    InputMaid:DoCleaning()
     MeleeModule.StopAuto()
     InputsUnbound:Fire()
     OwnEntity = nil
+    State.Machine = nil
 end
 
 
@@ -328,19 +366,20 @@ function MeleeModule:Setup()
     -- Fires whenever we unbind inputs for whatever reason.
     -- Including a state change that invalidates combat
     InputsUnbound = Signal.new()
+    InputMaid = Maid.new()
 
     -- Current attacking state and record of the
     --  previous attack used to choose next attack
     State = {
         Auto = false;
         PermissionKey = nil;
+        Machine = nil;
         Accessor = Mutex.new();
         LastAttack = {
             Interupted = false;
             StartedAt = 0; -- When this attack started
             StopsAt = 0; -- When the chain expires
             ID = -1; -- Moveset BaseID
-            SID = 0; -- Specific move index, starts at 0
         };
     }
 end
@@ -350,11 +389,10 @@ return MeleeModule
 
 --[[
 
--- TODO: Begin hitreg
--- TODO: Receive the damage key, deal damage
--- TODO: End hitreg
--- TODO: Make it all interruptible
-
-Movesets determined by specific primary weapon asset overide or weapon configuration
+Attack chain defined by weapon configuration
+Slams determined by above and current state our melee-specific FSM is in
+    Slam function re-defined when our melee-specific FSM changes state
+Inputs are unbound and rebound when weapon configuration changes
+Inputs are unbound and rebound when state changes to/from those that we may not attack from
 
 ]]

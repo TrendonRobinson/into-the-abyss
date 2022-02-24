@@ -41,6 +41,7 @@ function EntityPC.new(base, initParams)
 
 	self.Player = Players:GetPlayerFromCharacter(base)
 	self.FaceAsset = AssetService:GetAsset(initParams._FaceID or "060")
+    self:AddSignal("EquipmentChanged")
 
 	return self
 end
@@ -105,11 +106,13 @@ end
 -- @param equipSlot <Enums.EquipSlot>
 -- @param itemData <ItemDescriptor>
 function EntityPC:ChangeEquipment(equipSlot, itemData)
-    if (self.Equipment[equipSlot].BaseID ~= itemData.BaseID 
-        or self.Equipment[equipSlot].UID ~= itemData.UID) then
+    local oldData = self.Equipment[equipSlot]
+    if (oldData.BaseID ~= itemData.BaseID
+        or oldData.UID ~= itemData.UID) then
 
         self.Equipment[equipSlot] = itemData
         self:DrawEquipmentSlot(equipSlot)
+        self.EquipmentChanged:Fire(equipSlot, oldData, itemData)
     end
 end
 
