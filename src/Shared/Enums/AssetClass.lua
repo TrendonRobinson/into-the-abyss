@@ -25,9 +25,6 @@ return {
 
     Modifier = 14;
 
-    MovesetArcane = 15;
-    MovesetArchery = 16;
-    MovesetMelee = 17;
-    Skill = 18;
-    
+    MovesetMelee = 15;
+    Skill = 16;
 }

@@ -1,0 +1,16 @@
+-- THESE MUST LINE UP WITH MELEE MOVESETS
+--  e.g. 0 ~ X ARE MELEE CONFIGURATIONS
+--  AND X + 1 ~ INF ARE THE REST
+-- !! SAVE SAFE !!
+return {
+    TWO_HANDED_SWORD = 1;
+    SWORD_SHIELD = 2;
+    SWORD_SWORD = 3;
+    SWORD_X = 4;
+    SPEAR = 5;
+
+
+
+
+    BOW = 30;
+}

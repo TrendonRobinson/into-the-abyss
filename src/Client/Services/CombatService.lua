@@ -6,14 +6,14 @@
 
 
 
-local CombatService = {}
+local CombatService = {} -- TODO: Need to start AFTER SkillService when that gets implemented
 local Network, EntityService, InputManager
-local CombatArcaneModule, CombatArcheryModule, CombatMeleeModule, CombatSkillModule
-local CombatRequestType
+local CombatSkillModule, CombatArcaneModule, CombatArcheryModule, CombatMeleeModule
+
+local CombatRequestType, WeaponClass, WeaponConfiguration
+local ReplicationHandlers, OwnEntity
 
 local InputsBound = false
-
-local ReplicationHandlers, OwnEntity
 
 
 -- Receives server replication events and plays them locally
@@ -65,29 +65,65 @@ local function RegisterOwnEntity(base)
 end
 
 
+-- TODO: As this service HAS to load AFTER AnimationService 
+--  (submodules need to be able to play animations)
+--  we eventually need something in AnimationService exposed to us
+--  from which would allow setting core animator according to weapon
+--  configuration and/or potential cash shop core animators
+-- TODO: For now, we default with a nil return, but in the future
+--  this should never return nil as we should never call this
+--  function in the case we are not equipped for melee
+-- @param primary <EquipSlot> main weapon
+-- @param secondary <EquipSlot> offhand weapon
+-- @returns <CONFIGURATION>
+function CombatService.GetWeaponConfiguration(primary, secondary)
+    local currentConfig = nil
+
+    -- First check primary for configuration information
+    -- If empty, disregard and check secondary
+    if (primary.BaseID ~= -1) then
+        if (primary.Info.Class == WeaponClass.Greatsword) then
+            -- Primary is greatsword, immediate exit
+            return WeaponConfiguration.TWO_HANDED_SWORD
+        end
+    end
+
+    -- Based on what we know so far (currentConfig) about our primary,
+    --  make further decisions from our secondary
+    if (secondary.BaseID ~= -1) then
+        return nil
+    end
+
+    return nil
+end
+
+
 function CombatService:EngineInit()
     Network = self.Services.Network
     EntityService = self.Services.EntityService
     InputManager = self.Services.InputManager
 
     CombatRequestType = self.Enums.CombatRequestType
+    WeaponClass = self.Enums.WeaponClass
+    WeaponConfiguration = self.Enums.WeaponConfiguration
 
     -- Load and setup sub modules
+    -- CombatSkillModule = self.Modules.CombatSkillModule
     -- CombatArcaneModule = self.Modules.CombatArcaneModule
     -- CombatArcheryModule = self.Modules.CombatArcheryModule
     CombatMeleeModule = self.Modules.CombatMeleeModule
-    -- CombatSkillModule = self.Modules.CombatSkillModule
+    
 
+    -- CombatSkillModule:Setup()
     -- CombatArcaneModule:Setup()
     -- CombatArcheryModule:Setup()
     CombatMeleeModule:Setup()
-    -- CombatSkillModule:Setup()
 
     ReplicationHandlers = self.Classes.IndexedMap.new()
+    -- ReplicationHandlers:Add(CombatRequestType.ReplicatSkill, CombatSkillModule.ReplicateHandler)
     -- ReplicationHandlers:Add(CombatRequestType.ReplicateArcane, CombatArcaneModule.ReplicateHandler)
     -- ReplicationHandlers:Add(CombatRequestType.ReplicateArchery, CombatArcheryModule.ReplicateHandler)
     ReplicationHandlers:Add(CombatRequestType.ReplicateMelee, CombatMeleeModule.ReplicateHandler)
-    -- ReplicationHandlers:Add(CombatRequestType.ReplicatSkill, CombatSkillModule.ReplicateHandler)
 end
 
 

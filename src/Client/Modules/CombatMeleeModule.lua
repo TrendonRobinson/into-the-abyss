@@ -1,8 +1,8 @@
 local MeleeModule = {}
-local AssetService, Network, AnimationService, MetronomeService
+local AssetService, Network, AnimationService, MetronomeService, CombatService
 
 local ThreadUtil
-local CombatRequestType, WeaponClass, MoveWeapons, EquipSlot
+local CombatRequestType, WeaponConfiguration, WeaponClass, MoveWeapons, EquipSlot
 local Signal, Mutex, ListenerList, RaycastHitboxV4, Maid
 
 -- Exists purely for cleanly binding/unbinding actions from inputservice
@@ -11,53 +11,17 @@ local ACTIONS = {
     STOP_AUTO_ATTACK_MELEE = "Attack_Melee_Auto_Start";
 }
 
--- Represent what type of weapons are equipped
-local CONFIGURATION = {
-    TWO_HANDED_SWORD = "Sword2H";
-}
-
--- Fallback defaults if none equipped for specific configuration
-local DEFAULT_MOVESETS = {
-    [CONFIGURATION.TWO_HANDED_SWORD] = "111";
-}
-
 local State, OwnEntity, InputMaid, InputsUnbound
+local MovesetMap
 
 
 -- TODO: Check if primary weapon asset has special moveset
 -- Retrieves moveset BaseID to be later retrieved via AssetService
 -- @param configuration <CONFIGURATION>
--- @returns <string>
-function MeleeModule.GetMovesetBaseID(configuration)
-    return DEFAULT_MOVESETS[configuration]
-end
-
-
--- TODO: For now, we default with a nil return, but in the future
---  this should never return nil as we should never call this
---  function in the case we are not equipped for melee
--- @param primary <EquipSlot> main weapon
--- @param secondary <EquipSlot> offhand weapon
--- @returns <CONFIGURATION>
-function MeleeModule.GetWeaponConfiguration(primary, secondary)
-    local currentConfig = nil
-
-    -- First check primary for configuration information
-    -- If empty, disregard and check secondary
-    if (primary.BaseID ~= -1) then
-        if (primary.Info.Class == WeaponClass.Greatsword) then
-            -- Primary is greatsword, immediate exit
-            return CONFIGURATION.TWO_HANDED_SWORD
-        end
-    end
-
-    -- Based on what we know so far (currentConfig) about our primary,
-    --  make further decisions from our secondary
-    if (secondary.BaseID ~= -1) then
-        return nil
-    end
-
-    return nil
+-- @param asset <Asset>
+-- @returns <string> BaseID
+function MeleeModule.GetMovesetBaseID(configuration, asset)
+    return MovesetMap:Get(configuration)
 end
 
 
@@ -111,7 +75,7 @@ function MeleeModule.TryAttack()
     -- Could techincally make config and moveset global,
     --  but that would make things harder to read
     local weapons = {unpack(OwnEntity.Equipment, 4, 5)}
-    local configuration = MeleeModule.GetWeaponConfiguration(weapons[1], weapons[2])
+    local configuration = CombatService.GetWeaponConfiguration(weapons[1], weapons[2])
 
     -- Invalid weapons for a melee attack, assure we unlock and exit
     if (not configuration) then State.Accessor:Unlock() return end
@@ -145,6 +109,7 @@ function MeleeModule.TryAttack()
     OwnEntity.StateMachine:Transition("MeleeStart1")
 
     -- Last window interupted/expired or last attach reached end of chain
+    -- TODO: End-of-chain limited by user's mastery of the configuration
     if (State.Machine.CurrentState ~= -1 and (State.LastAttack.Interupted or now > State.LastAttack.StopsAt)
         or State.Machine.CurrentState == moveset.Moves.Count - 1) then
         State.Machine:Transition("Any-1")
@@ -168,7 +133,6 @@ function MeleeModule.TryAttack()
             -- Permission denied, abort
             interupted = true
             finished:Fire(false)
-            -- TODO: Reset statemachine
         else
             -- Permission granted and key received, start requesting hits
             State.PermissionKey = inKey
@@ -262,6 +226,38 @@ function MeleeModule.StopAuto()
 end
 
 
+-- TODO: Replicate slams
+-- Based on the current statemachine state, and weapon configuration
+--  attempt to execute the appropriate "slam" attack
+-- @param configuration <Enums.WeaponConfiguration>
+function MeleeModule.TrySlam(configuration)
+    if (not State.Accessor:TryLock()) then return end
+
+    -- Retrieve moveset data
+    local movesetBaseID = MeleeModule.GetMovesetBaseID(configuration) -- Blocking call
+    local moveset = AssetService:GetAsset(movesetBaseID) -- Blocking call
+    local slam = moveset.Slams[tostring(State.Machine.CurrentState)]
+    require(slam).SlamModule.Execute(MeleeModule, OwnEntity)
+
+    State.Accessor:Unlock() 
+end
+
+
+-- Rightclick, or equivalent input
+function MeleeModule.TrySecondary()
+    local weapons = {unpack(OwnEntity.Equipment, 4, 5)}
+    local configuration = CombatService.GetWeaponConfiguration(weapons[1], weapons[2])
+
+    -- If shield, guard; otherwise, slam
+    if (configuration == WeaponClass.Shield) then
+        -- TODO
+        _ = false
+    else
+        MeleeModule.TrySlam(configuration)
+    end
+end
+
+
 -- Create a statemachine allowing consecutive attacks up to
 --  however many the user has unlocked for his/her weapon config
 --  with an upper bound of however many the moveset has
@@ -269,7 +265,7 @@ end
 function MeleeModule.SetupStateMachine(entity)
     State.Accessor:Lock()
 
-    local configuration = MeleeModule.GetWeaponConfiguration(entity.Equipment[4], entity.Equipment[5])
+    local configuration = CombatService.GetWeaponConfiguration(entity.Equipment[4], entity.Equipment[5])
 
     -- No need to make one if we have no valid weapon config
     if (configuration ~= nil) then
@@ -301,7 +297,7 @@ function MeleeModule:BindInputs(inputMode, ownEntity, inputManager)
     -- Has blocking call
     MeleeModule.SetupStateMachine(ownEntity)
 
-    -- Abort, unlock
+    -- Abort if entity died while setting up statemachine
     if (OwnEntity == nil) then return end
 
     -- Async bind, has blocking call
@@ -329,7 +325,10 @@ end
 -- @param inputManager <Service>
 function MeleeModule:UnbindInputs(inputManager)
     for _, actionName in pairs(ACTIONS) do
+        -- Throws custom exception, unwrap if debugging
+        pcall(function()
         inputManager:UnbindAction(actionName)
+        end)
     end
 
     if (State.Machine) then State.Machine:Destroy() end
@@ -349,6 +348,7 @@ function MeleeModule:Setup()
     Network = self.Services.Network
     AnimationService = self.Services.AnimationService
     MetronomeService = self.Services.MetronomeService
+    CombatService = self.Services.CombatService
 
     ThreadUtil = self.Modules.ThreadUtil
 
@@ -356,12 +356,21 @@ function MeleeModule:Setup()
     WeaponClass = self.Enums.WeaponClass
     MoveWeapons = self.Enums.MoveWeapons
     EquipSlot = self.Enums.EquipSlot
+    WeaponConfiguration = self.Enums.WeaponConfiguration
 
     Signal = self.Classes.Signal
     Mutex = self.Classes.Mutex
     ListenerList = self.Classes.ListenerList
     RaycastHitboxV4 = self.Classes.RaycastHitboxV4
     Maid = self.Classes.Maid
+
+
+    -- Initialise configuration:moveset map baseid
+    MovesetMap = self.Classes.IndexedMap.new()
+    for _, classID in pairs(WeaponConfiguration) do
+        MovesetMap:Add(classID, "0F" ..  self.Modules.Hexadecimal.new(classID))
+        print(classID, "0F" ..  self.Modules.Hexadecimal.new(classID))
+    end
 
     -- Fires whenever we unbind inputs for whatever reason.
     -- Including a state change that invalidates combat
