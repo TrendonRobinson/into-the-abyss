@@ -1,9 +1,11 @@
 return {
     MeleeRequest = 0;
+    MeleeSlamRequest = 1;
     MeleeHitRequest = 2;
 
     ReplicateArcane = 10;
-    ReplicateArchery = 11;
+    ReplicateRanged = 11;
     ReplicateMelee = 12;
-    ReplicateSkill = 13;
+    ReplicateSlam = 13;
+    ReplicateSkill = 14;
 }

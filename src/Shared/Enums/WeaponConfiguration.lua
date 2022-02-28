@@ -3,11 +3,13 @@
 --  AND X + 1 ~ INF ARE THE REST
 -- !! SAVE SAFE !!
 return {
-    TWO_HANDED_SWORD = 1;
-    SWORD_SHIELD = 2;
-    SWORD_SWORD = 3;
-    SWORD_X = 4;
-    SPEAR = 5;
+    SWORD_SHIELD = 1;
+    X_SHIELD = 2;
+
+    TWO_HANDED_SWORD = 3;
+    SWORD_SWORD = 4;
+    SWORD_X = 5;
+    SPEAR = 6;
 
 
 

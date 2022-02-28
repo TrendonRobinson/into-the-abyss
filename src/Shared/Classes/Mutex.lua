@@ -20,12 +20,13 @@ Mutex.__index = Mutex
 setmetatable(Mutex, DeepObject)
 
 
-function Mutex.new()
+function Mutex.new(debug)
     local bindable = Instance.new("BindableEvent")
 
 	local self = DeepObject.new({
         _Locked = false;
         _Lock = bindable;
+        _Debug = debug;
         Blocked = 0;
     })
 
@@ -40,6 +41,10 @@ function Mutex:Lock()
     --  just in case the owner thread is sleeping
     while (self._Locked) do
         self._Lock.Event:Wait()
+    end
+
+    if (self._Debug) then
+        self:Print("Lock", self)
     end
 
     self._Locked = true
@@ -61,6 +66,9 @@ end
 
 -- Unlocks this mutex and signals to sleeping threads
 function Mutex:Unlock()
+    if (self._Debug) then
+        self:Print("Unlock", self)
+    end
     self._Locked = false
     self._Lock:Fire()
 end

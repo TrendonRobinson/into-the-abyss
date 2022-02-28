@@ -65,7 +65,7 @@ local function RegisterOwnEntity(base)
 end
 
 
--- TODO: As this service HAS to load AFTER AnimationService 
+-- TODO: As this service HAS to load AFTER AnimationService
 --  (submodules need to be able to play animations)
 --  we eventually need something in AnimationService exposed to us
 --  from which would allow setting core animator according to weapon
