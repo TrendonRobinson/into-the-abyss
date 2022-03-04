@@ -13,6 +13,13 @@ local ACTIONS = {
     STOP_SECONDARY_ATTACK = "Attack_Secondary_Stop";
 }
 
+local DIRECTIONS = {
+    Vector3.new(0, 0, -1), 
+    Vector3.new(0, 0, 1), 
+    Vector3.new(-1, 0, 0), 
+    Vector3.new(1, 0, 0)
+}
+
 local State, OwnEntity, InputMaid, InputsUnbound
 local MovesetMap
 
@@ -165,6 +172,21 @@ function MeleeModule.TryAttack()
             finished:Fire(true)
         end,
         finished)
+
+    -- If the move has stepping motions
+    if (move.Steps ~= nil) then
+        for _, step in ipairs(move.Steps) do
+            ThreadUtil.IntDelay(
+                step.Time,
+                function()
+                    local dir = DIRECTIONS[step.Direction]
+                    local vector = OwnEntity.Base.PrimaryPart.CFrame:VectorToWorldSpace(dir)
+                    local force = vector * step.Power * OwnEntity.Base.PrimaryPart.AssemblyMass
+                    OwnEntity.Base.PrimaryPart:ApplyImpulse(force)
+                end,
+                finished)
+        end
+    end
 
     -- Update "Last attack" info since this attack is now the most recent
     State.LastAttack.StartedAt = now
